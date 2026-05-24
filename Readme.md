@@ -219,6 +219,7 @@ Read CSV and write Parquet in Hive tables.
 See `chapter3-input-csv-output-parquet-hive/` folder.
 
 **Prerequisite:**
+
 * download the CSV from https://data.sfgov.org/Public-Safety/Fire-Incidents/wr8u-xric/data_preview
 
 To launch the application:
@@ -255,6 +256,7 @@ Apart from allowing you to issue SQL-like queries on your data, the Spark SQL en
 #### The Catalyst Optimizer
 
 4 transformations phases:
+
 * Analysis
 * Logical optimization
 * Physical planning
@@ -269,6 +271,7 @@ Apart from allowing you to issue SQL-like queries on your data, the Spark SQL en
 * Physical plan: `df.queryExecution.optimizedPlan`
 
 In practice, see `chapter3/catalyst-optimizer-explain/sql-explain.py`:
+
 ```shell
 mkdir /tmp/spark-events
 cd chapter3/catalyst-optimizer-explain/
@@ -279,6 +282,7 @@ cd chapter3/catalyst-optimizer-explain/
 ```
 
 Output:
+
 ```console
 == Parsed Logical Plan ==
 'Sort ['sum(Count) DESC NULLS LAST], true
@@ -311,3 +315,173 @@ AdaptiveSparkPlan isFinalPlan=false
                +- Filter (isnotnull(State#17) AND (State#17 = CA))
                   +- FileScan csv [State#17,Color#18,Count#19] Batched: false, DataFilters: [isnotnull(State#17), (State#17 = CA)], Format: CSV, Location: InMemoryFileIndex(1 paths)[file:/home/reboulleau/repos/discover-spark/chapter2-mnmcount/mnm_datas..., PartitionFilters: [], PushedFilters: [IsNotNull(State), EqualTo(State,CA)], ReadSchema: struct<State:string,Color:string,Count:int>
 ```
+
+### SQL & views
+
+> Instead of having a separate metastore for Spark tables, Spark by default uses the Apache Hive metastore, located at
+> /user/hive/warehouse, to persist all the metadata about your tables.
+
+> For a managed table, Spark manages both the metadata and the data in the file store. This could be a local filesystem,
+> HDFS, or an object store such as Amazon S3 or Azure Blob. For an unmanaged table, Spark only manages the metadata,
+> while
+> you manage the data yourself in an external data source such as Cassandra.
+
+#### Creating SQL Databases and Tables
+
+Create a database and use it:
+
+```shell
+spark.sql("CREATE DATABASE learn_spark_db")
+spark.sql("USE learn_spark_db")
+```
+
+Create a table in Spark shell (Spark SQL):
+
+```shell
+spark.sql("CREATE TABLE managed_us_delay_flights_tbl (date STRING, delay INT, distance INT, origin STRING, destination STRING)")
+```
+
+Or Python DataFrame
+
+```python
+# In Python
+# Path to our US flight delays CSV file 
+csv_file = "/databricks-datasets/learning-spark-v2/flights/departuredelays.csv"
+# Schema as defined in the preceding example
+schema = "date STRING, delay INT, distance INT, origin STRING, destination STRING"
+flights_df = spark.read.csv(csv_file, schema=schema)
+flights_df.write.saveAsTable("managed_us_delay_flights_tbl")
+```
+
+#### SQL Views
+
+```shell
+spark.sql("CREATE OR REPLACE GLOBAL TEMP VIEW us_origin_airport_SFO_global_tmp_view AS
+  SELECT date, delay, origin, destination from us_delay_flights_tbl WHERE 
+  origin = 'SFO';")
+spark.sql("SELECT * FROM us_origin_airport_JFK_tmp_view")
+```
+
+**Temporary views versus global temporary views**
+
+* Temporary views are only visible within the current Spark session.
+* Global temporary views are visible across Spark sessions.
+
+#### Spark Catalog
+
+> Spark manages the metadata associated with each managed or unmanaged table. This is captured in the Catalog
+
+```shell
+spark.catalog.listDatabases().show()
+spark.catalog.listTables().show()
+spark.catalog.listColumns("us_delay_flights_tbl").show()
+```
+
+#### Cache & Lazy
+
+We can create cache for a table, and optionally cache the data in lazy mode, that means we cache only at the first
+access.
+
+```shell
+CACHE [LAZY] TABLE <table-name>
+UNCACHE TABLE <table-name>
+```
+
+### DataFrameReader & DataFrameWriter
+
+#### DataFrameReader
+
+We can specify format, options, schema, etc.
+
+Spark can read CSV, JSON, Parquet, ORC, etc.
+The default format is Parquet.
+
+```python
+// In
+Scala
+// Use
+Parquet
+val
+file = """/databricks-datasets/learning-spark-v2/flights/summary-
+  data/parquet/2010-summary.parquet"""
+val
+df = spark.read.format("parquet").load(file)
+// Use
+Parquet;
+you
+can
+omit
+format("parquet") if you
+wish as it
+'s the default
+val
+df2 = spark.read.load(file)
+// Use
+CSV
+val
+df3 = spark.read.format("csv")
+.option("inferSchema", "true")
+.option("header", "true")
+.option("mode", "PERMISSIVE")
+.load("/databricks-datasets/learning-spark-v2/flights/summary-data/csv/*")
+// Use
+JSON
+val
+df4 = spark.read.format("json")
+.load("/databricks-datasets/learning-spark-v2/flights/summary-data/json/*")
+```
+
+#### DataFrameWriter
+
+```python
+DataFrameWriter.format(args)
+.option(args)
+.bucketBy(args)
+.partitionBy(args)
+.save(path)
+
+DataFrameWriter.format(args).option(args).sortBy(args).saveAsTable(table)
+```
+
+* format: Parquet, CSV, JSON, etc.
+* option: 
+  ```txt
+  ("mode", {append | overwrite | ignore | error or errorifexists} )
+  ("mode", {SaveMode.Overwrite | SaveMode.Append, SaveMode.Ignore, SaveMode.ErrorIfExists})
+  ("path", "path_to_write_to")
+  ```
+  
+#### Parquet
+
+**Reading Parquet files into a Spark SQL table**
+```sql
+CREATE OR REPLACE TEMPORARY VIEW us_delay_flights_tbl
+    USING parquet
+    OPTIONS (
+      path "/databricks-datasets/learning-spark-v2/flights/summary-data/parquet/
+      2010-summary.parquet/" )
+```
+```shell
+spark.sql("SELECT * FROM us_delay_flights_tbl").show()
+```
+
+**Write in Parquet**
+
+```python
+# In Python
+(df.write.format("parquet")
+  .mode("overwrite")
+  .option("compression", "snappy")
+  .save("/tmp/data/parquet/df_parquet"))
+```
+
+**Writing DataFrames to Spark SQL tables**
+
+```python
+(df.write
+  .mode("overwrite")
+  .saveAsTable("us_delay_flights_tbl"))
+```
+
+
+

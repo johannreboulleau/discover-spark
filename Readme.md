@@ -231,3 +231,83 @@ cd chapter3-input-csv-output-parquet-hive/input-csv-output-parquet-hive/
   --conf spark.eventLog.dir=file:/tmp/spark-events \
   transform-csv-to-hive.py
 ```
+
+## Spark SQL
+
+Apart from allowing you to issue SQL-like queries on your data, the Spark SQL engine:
+
+* Unifies Spark components and permits abstraction to DataFrames/Datasets in Java, Scala, Python, and R, which
+  simplifies working with structured data sets.
+* Connects to the Apache Hive metastore and tables.
+* Reads and writes structured data with a specific schema from structured file formats (JSON, CSV, Text, Avro, Parquet,
+  ORC, etc.) and converts data into temporary tables.
+* Offers an interactive Spark SQL shell for quick data exploration.
+* Provides a bridge to (and from) external tools via standard database JDBC/ODBC connectors.
+* Generates optimized query plans and compact code for the JVM, for final execution.
+
+![spark-sql.png](images/spark-sql.png)
+
+### Catalyst & Tungsten
+
+* Catalyst = request optimizer
+* Tungsten = query engine to execute query in low level with high performance
+
+#### The Catalyst Optimizer
+
+4 transformations phases:
+* Analysis
+* Logical optimization
+* Physical planning
+* Code generation (Tungsten) => generate efficient Java bytecode to run on each machine
+
+![catalyst-optimizer.png](images/catalyst-optimizer.png)
+
+##### Debug / Explain SQL
+
+* `count_mnm_df.explain(True)`
+* logical plan: `df.queryExecution.logical`
+* Physical plan: `df.queryExecution.optimizedPlan`
+
+In practice, see `chapter3/catalyst-optimizer-explain/sql-explain.py`:
+```shell
+mkdir /tmp/spark-events
+cd chapter3/catalyst-optimizer-explain/
+./../../spark-4.1.1-bin-hadoop3/bin/spark-submit \
+  --conf spark.eventLog.enabled=true \ # important to record the events and read the logs
+  --conf spark.eventLog.dir=file:/tmp/spark-events \
+  sql-explain.py
+```
+
+Output:
+```console
+== Parsed Logical Plan ==
+'Sort ['sum(Count) DESC NULLS LAST], true
++- Aggregate [State#17, Color#18], [State#17, Color#18, sum(Count#19) AS sum(Count)#25L]
+   +- Filter (State#17 = CA)
+      +- Project [State#17, Color#18, Count#19]
+         +- Relation [State#17,Color#18,Count#19] csv
+
+== Analyzed Logical Plan ==
+State: string, Color: string, sum(Count): bigint
+Sort [sum(Count)#25L DESC NULLS LAST], true
++- Aggregate [State#17, Color#18], [State#17, Color#18, sum(Count#19) AS sum(Count)#25L]
+   +- Filter (State#17 = CA)
+      +- Project [State#17, Color#18, Count#19]
+         +- Relation [State#17,Color#18,Count#19] csv
+
+== Optimized Logical Plan ==
+Sort [sum(Count)#25L DESC NULLS LAST], true
++- Aggregate [State#17, Color#18], [State#17, Color#18, sum(Count#19) AS sum(Count)#25L]
+   +- Filter (isnotnull(State#17) AND (State#17 = CA))
+      +- Relation [State#17,Color#18,Count#19] csv
+
+== Physical Plan ==
+AdaptiveSparkPlan isFinalPlan=false
++- Sort [sum(Count)#25L DESC NULLS LAST], true, 0
+   +- Exchange rangepartitioning(sum(Count)#25L DESC NULLS LAST, 200), ENSURE_REQUIREMENTS, [plan_id=44]
+      +- HashAggregate(keys=[State#17, Color#18], functions=[sum(Count#19)], output=[State#17, Color#18, sum(Count)#25L])
+         +- Exchange hashpartitioning(State#17, Color#18, 200), ENSURE_REQUIREMENTS, [plan_id=41]
+            +- HashAggregate(keys=[State#17, Color#18], functions=[partial_sum(Count#19)], output=[State#17, Color#18, sum#27L])
+               +- Filter (isnotnull(State#17) AND (State#17 = CA))
+                  +- FileScan csv [State#17,Color#18,Count#19] Batched: false, DataFilters: [isnotnull(State#17), (State#17 = CA)], Format: CSV, Location: InMemoryFileIndex(1 paths)[file:/home/reboulleau/repos/discover-spark/chapter2-mnmcount/mnm_datas..., PartitionFilters: [], PushedFilters: [IsNotNull(State), EqualTo(State,CA)], ReadSchema: struct<State:string,Color:string,Count:int>
+```

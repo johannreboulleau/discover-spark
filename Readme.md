@@ -151,3 +151,83 @@ cd /home/reboulleau/repos/discover-spark/spark-4.1.1-bin-hadoop3
 ```
 
 We can see the DAG, execution time, tasks, stages, etc.
+
+## DataFrame & Dataset
+
+DataFrame is a distributed collection of rows and columns like a column.
+
+* DataFrame = table with named column, like SQL
+* Dataset[T] = typed collection with Java/Scala objects
+
+To resume in Scala/Java, a DataFrame is a Dataset[Row]
+
+So:
+
+* DataFrame → useful for handle columns
+* Dataset → useful when you want strong typing with Scala/Java classes
+
+In Python, you mostly use DataFrames: the typed `Dataset[T]` API is not really available in PySpark
+
+> In Spark’s supported languages, Datasets make sense only in Java and Scala, whereas in Python and R only DataFrames
+> make sense. This is because Python and R are not compile-time type-safe
+
+### Schema
+
+**schema** in Spark defines the column names and associated data types for a DataFrame. (allow to type our data)
+
+```python
+# Show the DataFrame; it should reflect our table above
+blogs_df.show()
+# Print the schema used by Spark to process the DataFrame
+print(blogs_df.printSchema())
+```
+
+### Expressions & columns
+
+We can compute values using expressions.
+
+```sh
+// Use an expression to compute a value
+scala> blogsDF.select(expr("Hits * 2")).show(2)
+// or use col to compute value
+scala> blogsDF.select(col("Hits") * 2).show(2)
+```
+
+### Rows
+
+```python
+# In Python
+from pyspark.sql import Row
+
+blog_row = Row(6, "Reynold", "Xin", "https://tinyurl.6", 255568, "3/2/2015",
+               ["twitter", "LinkedIn"])
+# access using index for individual items
+blog_row[1]
+'Reynold'
+```
+
+**Important:**
+
+* DataFrame is immutable.
+* Spark keeps a lineage of all transformations. That means it can replay all transformations to reconstruct the original
+  DataFrame. => **Resilient to failures.**
+
+### Common DataFrame operations
+
+Read CSV and write Parquet in Hive tables.
+
+See `chapter3-input-csv-output-parquet-hive/` folder.
+
+**Prerequisite:**
+* download the CSV from https://data.sfgov.org/Public-Safety/Fire-Incidents/wr8u-xric/data_preview
+
+To launch the application:
+
+```sh
+mkdir /tmp/spark-events
+cd chapter3-input-csv-output-parquet-hive/input-csv-output-parquet-hive/
+./../../spark-4.1.1-bin-hadoop3/bin/spark-submit \
+  --conf spark.eventLog.enabled=true \ # important to record the events and read the logs
+  --conf spark.eventLog.dir=file:/tmp/spark-events \
+  transform-csv-to-hive.py
+```

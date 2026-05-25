@@ -588,5 +588,69 @@ spark.sql("SELECT * FROM us_delay_flights_tbl").show()
   .saveAsTable("us_delay_flights_tbl"))
 ```
 
+## Connect to external data sources (PostgreSQL)
+
+Download the driver from Maven repository: https://mvnrepository.com/artifact/org.postgresql/postgresql
+
+### Via PySpark
+
+```shell
+./pyspark --jars postgresql-42.7.11.jar
+```
+
+```python
+# Lire une table
+df = (spark.read
+      .format("jdbc")
+      .option("url", "jdbc:postgresql://localhost:5432/insight_db")
+      .option("dbtable", "public.systems_information")
+      .option("user", "postgres")
+      .option("password", "xxx")
+      .option("driver", "org.postgresql.Driver")
+      .load())
+
+# Vérifier le schéma
+df.printSchema()
+
+# Afficher les 10 premières lignes
+df.show(10)
+
+# Créer une vue temporaire pour requêter en SQL
+df.createOrReplaceTempView("systems_information")
+
+spark.sql("SELECT * FROM systems_information WHERE ...").show()
+```
+
+=> Test ok
+
+### Via Spark Submit with script
+
+```shell
+./bin/spark-submit \
+  --jars ../postgresql-42.7.4.jar \
+  mon_script.py
+```
+
+Script
+```python
+from pyspark.sql import SparkSession
+
+spark = (SparkSession.builder
+    .appName("postgres-local")
+    .config("spark.jars", "/home/reboulleau/repos/discover-spark/spark-4.1.1-bin-hadoop3/bin/postgresql-42.7.4.jar")
+    .getOrCreate())
+
+df = (spark.read
+    .format("jdbc")
+    .option("url", "jdbc:postgresql://localhost:5432/ma_base")
+    .option("dbtable", "public.ma_table")
+    .option("user", "postgres")
+    .option("password", "xxx")
+    .option("driver", "org.postgresql.Driver")
+    .load())
+
+df.printSchema()
+df.show(10)
+```
 
 

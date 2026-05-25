@@ -6,6 +6,42 @@ book "[Learning Spark: lighting-fast data analytics](https://learning.oreilly.co
 
 The authors are co-founder of Databricks and a committer on Apache Spark.
 
+<!-- TOC -->
+* [Spark learning](#spark-learning)
+  * [Installation](#installation)
+  * [Spark components](#spark-components)
+  * [Ecosystem](#ecosystem)
+  * [Spark architecture](#spark-architecture)
+  * [Deployment modes](#deployment-modes)
+  * [Get started](#get-started)
+    * [Launching Spark (Spark shell)](#launching-spark-spark-shell)
+    * [Concepts](#concepts)
+    * [Lazy transformations and eager actions](#lazy-transformations-and-eager-actions)
+    * [Narrow and Wide Transformations](#narrow-and-wide-transformations)
+    * [Spark ui](#spark-ui)
+  * [Spark Standalone applications](#spark-standalone-applications)
+  * [DataFrame & Dataset](#dataframe--dataset)
+    * [Schema](#schema)
+    * [Expressions & columns](#expressions--columns)
+    * [Rows](#rows)
+    * [Common DataFrame operations](#common-dataframe-operations)
+  * [Spark SQL](#spark-sql)
+    * [Catalyst & Tungsten](#catalyst--tungsten)
+      * [The Catalyst Optimizer](#the-catalyst-optimizer)
+        * [Debug / Explain SQL](#debug--explain-sql)
+    * [SQL & views](#sql--views)
+      * [Creating SQL Databases and Tables](#creating-sql-databases-and-tables)
+      * [SQL Views](#sql-views)
+      * [Spark Catalog](#spark-catalog)
+      * [Cache & Lazy](#cache--lazy)
+      * [User Defined Functions (UDFs)](#user-defined-functions-udfs)
+    * [Spark SQL Shell](#spark-sql-shell)
+  * [DataFrameReader & DataFrameWriter](#dataframereader--dataframewriter)
+    * [DataFrameReader](#dataframereader)
+    * [DataFrameWriter](#dataframewriter)
+    * [Parquet](#parquet)
+<!-- TOC -->
+
 ## Installation
 
 Download spark from https://spark.apache.org/downloads.html
@@ -42,7 +78,7 @@ And decompress it in this folder.
 
 ## Get started
 
-### Launching Spark
+### Launching Spark (Spark shell)
 
 * `./bin/spark-shell`
 * ./bin/pyspark
@@ -387,51 +423,120 @@ CACHE [LAZY] TABLE <table-name>
 UNCACHE TABLE <table-name>
 ```
 
-### DataFrameReader & DataFrameWriter
+#### User Defined Functions (UDFs)
 
-#### DataFrameReader
+```python
+# Register UDF
+spark.udf.register("cubed", cubed, LongType())
+
+# Generate temporary view
+spark.range(1, 9).createOrReplaceTempView("udf_test")
+
+# Now we can use this new function "cubed"
+spark.sql("SELECT id, cubed(id) AS id_cubed FROM udf_test").show()
+```
+
+**Pay attention to the performance of UDFs with Python:**
+This was because the PySpark UDFs required data movement between the JVM and Python
+
+-> Use Panda UDF
+
+Two options with Kubernetes Spark operator:
+* UDF Python libraries are installed in the Notebook
+* Persistent UDF (CREATE FUNCTION in the external catalog + artefact (JAR))
+
+```python
+# In Python
+# Import pandas
+import pandas as pd
+
+# Import various pyspark SQL functions including pandas_udf
+from pyspark.sql.functions import col, pandas_udf
+from pyspark.sql.types import LongType
+
+# Declare the cubed function 
+def cubed(a: pd.Series) -> pd.Series:
+    return a * a * a
+
+# Create the pandas UDF for the cubed function 
+cubed_udf = pandas_udf(cubed, returnType=LongType())
+
+# Create a Pandas Series
+x = pd.Series([1, 2, 3])
+
+# The function for a pandas_udf executed with local Pandas data
+print(cubed(x))
+
+# Create a Spark DataFrame, 'spark' is an existing SparkSession
+df = spark.range(1, 4)
+
+# Execute function as a Spark vectorized UDF
+df.select("id", cubed_udf(col("id"))).show()
+```
+
+### Spark SQL Shell
+
+```shell
+./bin/spark-sql
+```
+
+```sql
+spark-sql> CREATE TABLE people (name STRING, age int);
+spark-sql> INSERT INTO people VALUES ("Alice", 34);
+spark-sql> SELECT * FROM people;
+```
+
+### Other tools: Beeline JDBC / Tableau
+
+#### Beeline
+
+```shell
+# Start the server
+./sbin/start-thriftserver.sh
+# Connect to the Thrift server via Beeline
+./bin/beeline
+# Execute a Spark SQL query with Beeline
+0: jdbc:hive2://localhost:10000> SHOW tables;
+```
+
+#### Tableau
+
+```shell
+# Start the server
+./sbin/start-thriftserver.sh
+````
+And start Tableau and connect to the Thrift server with the JDBC connector.
+This is a UI tool to explore the data and create dashboards.
+
+## DataFrameReader & DataFrameWriter
+
+### DataFrameReader
 
 We can specify format, options, schema, etc.
 
 Spark can read CSV, JSON, Parquet, ORC, etc.
 The default format is Parquet.
 
-```python
-// In
-Scala
-// Use
-Parquet
-val
-file = """/databricks-datasets/learning-spark-v2/flights/summary-
+```Scala
+// In Scala
+// Use Parquet
+val file = """/databricks-datasets/learning-spark-v2/flights/summary-
   data/parquet/2010-summary.parquet"""
-val
-df = spark.read.format("parquet").load(file)
-// Use
-Parquet;
-you
-can
-omit
-format("parquet") if you
-wish as it
-'s the default
-val
-df2 = spark.read.load(file)
-// Use
-CSV
-val
-df3 = spark.read.format("csv")
-.option("inferSchema", "true")
-.option("header", "true")
-.option("mode", "PERMISSIVE")
-.load("/databricks-datasets/learning-spark-v2/flights/summary-data/csv/*")
-// Use
-JSON
-val
-df4 = spark.read.format("json")
-.load("/databricks-datasets/learning-spark-v2/flights/summary-data/json/*")
+val df = spark.read.format("parquet").load(file)
+// Use Parquet; you can omit format("parquet") if you wish as it 's the default
+val df2 = spark.read.load(file)
+// Use CSV
+val df3 = spark.read.format("csv")
+    .option("inferSchema", "true")
+    .option("header", "true")
+    .option("mode", "PERMISSIVE")
+    .load("/databricks-datasets/learning-spark-v2/flights/summary-data/csv/*")
+// Use JSON
+val df4 = spark.read.format("json")
+    .load("/databricks-datasets/learning-spark-v2/flights/summary-data/json/*")
 ```
 
-#### DataFrameWriter
+### DataFrameWriter
 
 ```python
 DataFrameWriter.format(args)
@@ -451,7 +556,7 @@ DataFrameWriter.format(args).option(args).sortBy(args).saveAsTable(table)
   ("path", "path_to_write_to")
   ```
   
-#### Parquet
+### Parquet
 
 **Reading Parquet files into a Spark SQL table**
 ```sql

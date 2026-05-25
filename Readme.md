@@ -653,4 +653,112 @@ df.printSchema()
 df.show(10)
 ```
 
+## Common SQL and DataFrame operations
+
+### Official documentation
+
+* Spark SQL documentation: https://spark.apache.org/docs/latest/api/sql/index.html#lead
+
+### Examples
+
+#### SQL Array type functions
+
+* `array_distinct()`
+* `array_except()`
+* `array_intersect()`
+* `array_union()`
+* `array_join()`
+* `array_max()`
+* `array_min()`
+* `array_position()`
+* `array_remove()`
+* `arrays_overlap()`
+* `array_sort()`
+* `concat()`
+* etc
+
+#### SQL Array map functions
+
+* `map_form_arrays()`
+* `map_from_entries()`
+* `map_concat()`
+* `element_at()`
+* `cardinality()`
+
+#### SQL Higher-Order Functions
+
+* `transform(values, value -> lambda expression)`
+* `filter(values, value -> lambda expression)`
+* `exists(values, value -> lambda expression)`
+* `reduce(values, acc -> lambda expression, initialValue)`
+
+#### DataFrame functions
+
+* `df1.union(df2)`
+* `df1.join(df2)`
+
+#### Windowing (SQL and DataFrame)
+
+| Type               | SQL              | DataFrame API    |
+|--------------------|------------------|------------------|
+| **Ranking**        | `rank()`         | `rank()`         |
+|                    | `dense_rank()`   | `denseRank()`    |
+|                    | `percent_rank()` | `percentRank()`  |
+|                    | `ntile()`        | `ntile()`        |
+|                    | `row_number()`   | `rowNumber()`    |
+| **Analytic**       | `cume_dist()`    | `cumeDist()`     |
+|                    | `first_value()`  | `firstValue()`   |
+|                    | `last_value()`   | `lastValue()`    |
+|                    | `lag()`          | `lag()`          |
+|                    | `lead()`         | `lead()`         |
+
+#### Modification (DataFrame)
+
+* Adding new columns: `df.withColumn("new_column", expr("existing_column * 2"))`
+* Renaming columns: `df.withColumnRenamed("old_name", "new_name")`
+* Dropping columns: `df.drop("column_to_drop")`
+
+#### Pivoting (SQL and DataFrame)
+
+When we would like to transform rows into columns, we can use pivoting.
+
+```sql
+-- In SQL
+SELECT * FROM (
+SELECT destination, CAST(SUBSTRING(date, 0, 2) AS int) AS month, delay 
+  FROM departureDelays WHERE origin = 'SEA' 
+) 
+PIVOT (
+  CAST(AVG(delay) AS DECIMAL(4, 2)) AS AvgDelay, MAX(delay) AS MaxDelay
+  FOR month IN (1 JAN, 2 FEB)
+)
+ORDER BY destination
+```
+
+```python
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import sum
+
+spark = SparkSession.builder.getOrCreate()
+
+data = [
+    (2023, "Q1", 100), (2023, "Q2", 150),
+    (2023, "Q3", 120), (2023, "Q4", 200),
+    (2024, "Q1", 110), (2024, "Q2", 160),
+]
+df = spark.createDataFrame(data, ["year", "quarter", "revenue"])
+
+# Pivot : groupBy year, pivoter sur quarter, agréger revenue
+pivot_df = (df
+    .groupBy("year")
+    .pivot("quarter")           # valeurs de quarter → colonnes
+    .agg(sum("revenue")))       # valeur dans chaque cellule
+
+pivot_df.show()
+# +----+----+----+----+----+
+# |year|  Q1|  Q2|  Q3|  Q4|
+# +----+----+----+----+----+
+# |2023| 100| 150| 120| 200|
+# |2024| 110| 160|null|null|
+```
 
